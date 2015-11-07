@@ -85,13 +85,15 @@ class SpharmInterface(object):
         S-N to N-S, combine time and vertical dimensions, and put the remaining
         three dimensions into the order (lat, lon, time&vertical).
         """
+        if arr is None:
+            return
         arr_spharm = cls.fill_mask(arr)
         arr_spharm = cls.flip_lat_order(arr_spharm)
         return cls.format_axes_for_spharm(arr_spharm)
 
-    def __init__(self, u, v, gridtype='regular', rsphere=r_e,
-                 legfunc='computed', make_vectorwind=False,
-                 make_spharmt=False, squeeze=False):
+    def __init__(self, u=None, v=None, n_lat=False, n_lon=False,
+                 gridtype='regular', rsphere=r_e, legfunc='computed',
+                 make_vectorwind=False, make_spharmt=False, squeeze=False):
         """Create a SpharmInterface object."""
         if squeeze:
             u, v = self.squeeze(u), self.squeeze(v)
@@ -106,33 +108,48 @@ class SpharmInterface(object):
         self._rsphere = rsphere
         self._legfunc = legfunc
 
-        self.u = self.prep_for_spharm(self._u)
-        self.v = self.prep_for_spharm(self._v)
-        self.n_lat, self.n_lon = self.u.shape[:2]
+        if u is not None and v is not None:
+            if n_lat or n_lon:
+                logging.warning(
+                    "Ignoring values of n_lat ({}) and n_lon({}); instead "
+                    "determining them from u and v.".format(n_lat, n_lon)
+                )
+            self.u = self.prep_for_spharm(u)
+            self.v = self.prep_for_spharm(v)
+            self.n_lat, self.n_lon = self.u.shape[:2]
 
-        if make_vectorwind:
-            self.make_vectorwind()
-        if make_spharmt:
-            self.make_spharmt()
+            if make_vectorwind:
+                self.vectorwind = self.make_vectorwind(self.u, self.v)
+                self.spharmt = self.vectorwind.s
+        else:
+            if not n_lat and not n_lon:
+                raise ValueError(
+                    "None of u, v, n_lat, or n_lon were specified.  Either "
+                    "u and v or n_lat and n_lon must be specified."
+                )
+            else:
+                self.n_lat, self.n_lon = n_lat, n_lon
 
-    def make_vectorwind(self):
-        self.vectorwind = windspharm.standard.VectorWind(
-            self.u, self.v, gridtype=self._gridtype
-        )
+        if make_spharmt and not hasattr(self, 'spharmt'):
+            self.spharmt = self.make_spharmt(self.n_lat, self.n_lon)
 
-    def make_spharmt(self):
+    @staticmethod
+    def make_vectorwind(u, v, gridtype='regular'):
+        return windspharm.standard.VectorWind(u, v, gridtype=gridtype)
+
+    def make_spharmt(self, n_lat, n_lon):
         try:
-            self.spharmt = self.vectorwind.s
+            return self.vectorwind.s
         except AttributeError:
-            self.spharmt = spharm.Spharmt(
-                self.n_lon, self.n_lat, rsphere=self._rsphere,
-                gridtype=self._gridtype, legfunc=self._legfunc
-            )
+            return spharm.Spharmt(n_lon, n_lat, rsphere=self._rsphere,
+                                  gridtype=self._gridtype,
+                                  legfunc=self._legfunc)
 
-    def to_xray(self, ndarray):
+    def to_xray(self, ndarray, arr_orig=None):
         """Create xray object matching original one from spharm object."""
         # Re-expand collapsed non-lat/lon dims.
-        arr_orig = self._u
+        if arr_orig is None:
+            arr_orig = self._u
         ax_lat_orig = arr_orig.get_axis_num(LAT_STR)
         ax_lon_orig = arr_orig.get_axis_num(LON_STR)
         ax_other_dims = set(range(arr_orig.ndim)) - {ax_lat_orig, ax_lon_orig}
