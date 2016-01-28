@@ -5,7 +5,7 @@ from aospy.constants import r_e
 import numpy as np
 import spharm
 import windspharm
-import xray
+import xarray as xr
 
 LAT_STR = 'lat'
 LON_STR = 'lon'
@@ -41,13 +41,13 @@ class SpharmInterface(object):
         """Replace masked entries with the specified fill value."""
         arr_filled = arr.to_masked_array()
         arr_filled = np.ma.filled(arr_filled, fill_value=fill_value)
-        return xray.DataArray(arr_filled, dims=arr.dims, coords=arr.coords)
+        return xr.DataArray(arr_filled, dims=arr.dims, coords=arr.coords)
 
     @staticmethod
     def flag_flip_lat(arr, out_north_to_south=True):
-        # Input could be xray.DataArray or a numpy array
+        # Input could be xarray.DataArray or a numpy array
         try:
-            # xray has bugs re: diff-ing coords.  So grab the numpy array.
+            # xarray has bugs re: diff-ing coords.  So grab the numpy array.
             lat = arr[LAT_STR].values
         except AttributeError:
             lat = arr
@@ -70,7 +70,7 @@ class SpharmInterface(object):
         In particular, lat and lon are the first two axes, respectively, and
         all other axes are collapsed into one.
 
-        Returns a numpy array, *not* an xray.DataArray.
+        Returns a numpy array, *not* an xarray.DataArray.
         """
         ax_lat, ax_lon = arr.get_axis_num(LAT_STR), arr.get_axis_num(LON_STR)
         rolled = np.rollaxis(np.rollaxis(arr.copy().values, ax_lat, 0),
@@ -145,8 +145,8 @@ class SpharmInterface(object):
                                   gridtype=self._gridtype,
                                   legfunc=self._legfunc)
 
-    def to_xray(self, ndarray, arr_orig=None):
-        """Create xray object matching original one from spharm object."""
+    def to_xarray(self, ndarray, arr_orig=None):
+        """Create xarray object matching original one from spharm object."""
         # Re-expand collapsed non-lat/lon dims.
         if arr_orig is None:
             arr_orig = self._u
@@ -166,6 +166,6 @@ class SpharmInterface(object):
         if self.flag_flip_lat(arr_orig, out_north_to_south=True):
             arr_new = np.swapaxes(arr_new.swapaxes(ax_lat_orig, 0)[::-1],
                                   ax_lat_orig, 0)
-        # Reapply the mask and return to an xray object.
-        return xray.DataArray(np.ma.array(arr_new, mask=self.mask),
-                              dims=arr_orig.dims, coords=arr_orig.coords)
+        # Reapply the mask and return to an xarray object.
+        return xr.DataArray(np.ma.array(arr_new, mask=self.mask),
+                            dims=arr_orig.dims, coords=arr_orig.coords)
